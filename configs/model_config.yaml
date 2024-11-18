@@ -1,0 +1,32 @@
+model:
+  name: "mbart-large-50"
+  max_length: 128
+  src_lang: "en_XX"
+  tgt_lang: "roh_XX"
+
+training:
+  num_train_epochs: 10
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 16
+  warmup_steps: 500
+  weight_decay: 0.01
+  logging_steps: 10
+  evaluation_strategy: "steps"
+  eval_steps: 500
+  save_steps: 1000
+  save_total_limit: 2
+  fp16: true  # Use mixed precision if GPU available
+  gradient_accumulation_steps: 4
+
+data:
+  train_file: "data/processed/train"
+  valid_file: "data/processed/val"
+  test_file: "data/processed/test"
+  max_length: 128
+  
+tokenizer:
+  special_tokens:
+    - "<roh>"
+  truncation: true
+  padding: "max_length"
+  return_tensors: "pt"
