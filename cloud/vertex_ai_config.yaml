@@ -5,7 +5,7 @@ workerPoolSpecs:
   containerSpec:
     imageUri: gcr.io/airotech-442120/rohingya-translator:latest
     args:
-      - --config=configs/model_config.yaml
+      - --config=gs://airotechbkt/configs/model_config.yaml
       - --output_dir=gs://airotechbkt/models/
       - --data_dir=gs://airotechbkt/data/
 
