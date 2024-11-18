@@ -22,12 +22,19 @@ def deploy_training_job(
         config = yaml.safe_load(f)
     
     # Create custom training job
-    worker_pool_specs = [{
-        "machine_spec": {
-            "machine_type": config["workerPoolSpecs"]["machineSpec"]["machineType"],
+    machine_spec = {
+        "machine_type": config["workerPoolSpecs"]["machineSpec"]["machineType"],
+    }
+    
+    # Add accelerator config if present
+    if "acceleratorType" in config["workerPoolSpecs"]["machineSpec"]:
+        machine_spec.update({
             "accelerator_type": config["workerPoolSpecs"]["machineSpec"]["acceleratorType"],
             "accelerator_count": config["workerPoolSpecs"]["machineSpec"]["acceleratorCount"],
-        },
+        })
+    
+    worker_pool_specs = [{
+        "machine_spec": machine_spec,
         "replica_count": config["workerPoolSpecs"]["replicaCount"],
         "container_spec": {
             "image_uri": config["workerPoolSpecs"]["containerSpec"]["imageUri"],
