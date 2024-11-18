@@ -1,8 +1,6 @@
 workerPoolSpecs:
   machineSpec:
     machineType: n1-standard-8
-    acceleratorType: NVIDIA_TESLA_T4
-    acceleratorCount: 1
   replicaCount: 1
   containerSpec:
     imageUri: gcr.io/airotech-442120/rohingya-translator:latest
