@@ -5,13 +5,13 @@ workerPoolSpecs:
     acceleratorCount: 1
   replicaCount: 1
   containerSpec:
-    imageUri: gcr.io/[PROJECT_ID]/rohingya-translator:latest
+    imageUri: gcr.io/airotech-442120/rohingya-translator:latest
     args:
       - --config=configs/model_config.yaml
-      - --output_dir=gs://[BUCKET_NAME]/models/
-      - --data_dir=gs://[BUCKET_NAME]/data/
+      - --output_dir=gs://airotechbkt/models/
+      - --data_dir=gs://airotechbkt/data/
 
 scheduling:
   timeout: 86400s  # 24 hours
 
-serviceAccount: [SERVICE_ACCOUNT_EMAIL]
+serviceAccount: airotech-442120-compute@developer.gserviceaccount.com
