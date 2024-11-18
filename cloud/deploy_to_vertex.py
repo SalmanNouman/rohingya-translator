@@ -10,8 +10,12 @@ def deploy_training_job(
     config_path: str
 ):
     """Deploy a training job to Vertex AI."""
-    # Initialize Vertex AI
-    aiplatform.init(project=project_id, location=location)
+    # Initialize Vertex AI with staging bucket
+    aiplatform.init(
+        project=project_id,
+        location=location,
+        staging_bucket="gs://airotechbkt"  # Using your existing bucket
+    )
     
     # Load configuration
     with open(config_path) as f:
