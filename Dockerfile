@@ -17,6 +17,7 @@ COPY . .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
-# Default command (can be overridden)
-CMD ["python", "src/train.py", "--config", "configs/model_config.yaml"]
+# Make the entrypoint more flexible for cloud environment
+ENTRYPOINT ["python", "-m", "src.train"]
