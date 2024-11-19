@@ -1,26 +1,26 @@
 FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
 
-# Set working directory
-WORKDIR /app
+# Install git for huggingface
+RUN apt-get update && apt-get install -y git
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
+# Copy requirements file
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install -r requirements.txt
 
+# Create the app directory structure
+RUN mkdir -p /app/src
+
+# Set the working directory
+WORKDIR /app
+
 # Copy project files
-COPY . .
+COPY src/ /app/src/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app
 
-# Set the working directory for the entry point
-WORKDIR /app/src
-
-# Run the training script as a module
-ENTRYPOINT ["python", "-m", "train"]
+# Run the training script
+ENTRYPOINT ["python", "-m", "src.train"]
