@@ -13,6 +13,3 @@ scheduling:
   timeout: 86400s  # 24 hours
 
 serviceAccount: 596516478493-compute@developer.gserviceaccount.com
-
-# Set the region to us-west1
-location: us-west1
