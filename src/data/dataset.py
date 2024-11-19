@@ -2,15 +2,21 @@ import torch
 from torch.utils.data import Dataset
 from typing import Dict, List
 from transformers import PreTrainedTokenizer
+import logging
+from collections import defaultdict
+from pathlib import Path
+import pandas as pd
+from typing import List, Dict, Tuple, Optional
 
 class TranslationDataset(Dataset):
     def __init__(
         self,
         source_texts: List[str],
         target_texts: List[str],
-        source_tokenizer: PreTrainedTokenizer,
-        target_tokenizer: PreTrainedTokenizer,
-        max_length: int = 128
+        tokenizer: PreTrainedTokenizer,
+        max_length: int = 128,
+        src_lang: str = "en_XX",
+        tgt_lang: str = "roh_XX"
     ):
         """
         Dataset for machine translation.
@@ -18,15 +24,17 @@ class TranslationDataset(Dataset):
         Args:
             source_texts: List of source language texts
             target_texts: List of target language texts (Rohingya)
-            source_tokenizer: Tokenizer for source language
-            target_tokenizer: Tokenizer for target language
+            tokenizer: MBart tokenizer
             max_length: Maximum sequence length
+            src_lang: Source language code
+            tgt_lang: Target language code
         """
         self.source_texts = source_texts
         self.target_texts = target_texts
-        self.source_tokenizer = source_tokenizer
-        self.target_tokenizer = target_tokenizer
+        self.tokenizer = tokenizer
         self.max_length = max_length
+        self.src_lang = src_lang
+        self.tgt_lang = tgt_lang
 
     def __len__(self) -> int:
         return len(self.source_texts)
@@ -36,65 +44,69 @@ class TranslationDataset(Dataset):
         target_text = str(self.target_texts[idx])
 
         # Tokenize source text
-        source_encodings = self.source_tokenizer(
+        source_encodings = self.tokenizer(
             source_text,
             max_length=self.max_length,
             padding="max_length",
             truncation=True,
-            return_tensors="pt"
+            return_tensors="pt",
+            src_lang=self.src_lang
         )
 
         # Tokenize target text
-        target_encodings = self.target_tokenizer(
-            target_text,
-            max_length=self.max_length,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt"
-        )
+        with self.tokenizer.as_target_tokenizer():
+            target_encodings = self.tokenizer(
+                target_text,
+                max_length=self.max_length,
+                padding="max_length",
+                truncation=True,
+                return_tensors="pt"
+            )
+
+        # Remove batch dimension added by tokenizer
+        input_ids = source_encodings["input_ids"].squeeze(0)
+        attention_mask = source_encodings["attention_mask"].squeeze(0)
+        labels = target_encodings["input_ids"].squeeze(0)
 
         return {
-            "input_ids": source_encodings["input_ids"].squeeze(),
-            "attention_mask": source_encodings["attention_mask"].squeeze(),
-            "labels": target_encodings["input_ids"].squeeze(),
-            "decoder_attention_mask": target_encodings["attention_mask"].squeeze()
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels
         }
 
 def prepare_dataset(
-    source_texts: List[str],
-    target_texts: List[str],
-    source_tokenizer: PreTrainedTokenizer,
-    target_tokenizer: PreTrainedTokenizer,
-    max_length: int = 128
+    data_path: str,
+    max_length: int,
+    src_lang: str,
+    tgt_lang: str,
+    tokenizer: PreTrainedTokenizer
 ) -> TranslationDataset:
     """
     Prepare a dataset for training or evaluation.
     
     Args:
-        source_texts: List of source language texts
-        target_texts: List of target language texts
-        source_tokenizer: Tokenizer for source language
-        target_tokenizer: Tokenizer for target language
+        data_path: Path to the data directory
         max_length: Maximum sequence length
+        src_lang: Source language code
+        tgt_lang: Target language code
+        tokenizer: MBart tokenizer
         
     Returns:
         TranslationDataset instance
     """
+    # Load the data
+    df = pd.read_csv(data_path)
+    source_texts = df['english'].tolist()
+    target_texts = df['rohingya'].tolist()
+    
     return TranslationDataset(
         source_texts=source_texts,
         target_texts=target_texts,
-        source_tokenizer=source_tokenizer,
-        target_tokenizer=target_tokenizer,
-        max_length=max_length
+        tokenizer=tokenizer,
+        max_length=max_length,
+        src_lang=src_lang,
+        tgt_lang=tgt_lang
     )
-
-
-import pandas as pd
-from pathlib import Path
-from typing import List, Dict, Tuple, Optional
-import logging
-from collections import defaultdict
-import re
 
 class RohingyaDataset:
     def __init__(

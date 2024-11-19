@@ -11,9 +11,9 @@ import yaml
 from google.cloud import storage
 import argparse
 
-from src.models.transformer import RohingyaTranslator
-from src.data.dataset import TranslationDataset, prepare_dataset
-from src.utils.metrics import compute_bleu_score, decode_predictions
+from models.transformer import RohingyaTranslator
+from data.dataset import TranslationDataset, prepare_dataset
+from utils.metrics import compute_bleu_score, decode_predictions
 
 # Configure logging
 logging.basicConfig(
@@ -253,21 +253,23 @@ def main():
         with open(config_path) as f:
             config = yaml.safe_load(f)
         
-        # Initialize model and datasets
+        # Initialize model
         model = RohingyaTranslator(config['model'])
         
         train_dataset = prepare_dataset(
             f"{args.data_dir}/train",
             config['data']['max_length'],
             config['model']['src_lang'],
-            config['model']['tgt_lang']
+            config['model']['tgt_lang'],
+            model.tokenizer
         )
         
         val_dataset = prepare_dataset(
             f"{args.data_dir}/val",
             config['data']['max_length'],
             config['model']['src_lang'],
-            config['model']['tgt_lang']
+            config['model']['tgt_lang'],
+            model.tokenizer
         )
         
         # Initialize trainer

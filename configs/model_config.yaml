@@ -1,5 +1,5 @@
 model:
-  name: "mbart-large-50"
+  name: "facebook/mbart-large-50"  # Full model name required
   max_length: 128
   src_lang: "en_XX"
   tgt_lang: "roh_XX"
@@ -19,12 +19,13 @@ training:
   gradient_accumulation_steps: 4
 
 data:
-  train_file: "data/processed/train"
-  valid_file: "data/processed/val"
-  test_file: "data/processed/test"
+  train_file: "gs://airotechbkt/data/processed/train"
+  valid_file: "gs://airotechbkt/data/processed/val"
+  test_file: "gs://airotechbkt/data/processed/test"
   max_length: 128
   
 tokenizer:
+  model_name: "facebook/mbart-large-50"  # Full model name required
   special_tokens:
     - "<roh>"
   truncation: true
