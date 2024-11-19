@@ -11,9 +11,9 @@ import yaml
 from google.cloud import storage
 import argparse
 
-from models.transformer import RohingyaTranslator
-from data.dataset import TranslationDataset, prepare_dataset
-from utils.metrics import compute_bleu_score, decode_predictions
+from src.models.transformer import RohingyaTranslator
+from src.data.dataset import TranslationDataset, prepare_dataset
+from src.utils.metrics import compute_bleu_score, decode_predictions
 
 # Configure logging
 logging.basicConfig(
