@@ -17,7 +17,10 @@ COPY . .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 
-# Make the entrypoint more flexible for cloud environment
-ENTRYPOINT ["python", "-m", "src.train"]
+# Set the working directory for the entry point
+WORKDIR /app/src
+
+# Run the training script as a module
+ENTRYPOINT ["python", "-m", "train"]
