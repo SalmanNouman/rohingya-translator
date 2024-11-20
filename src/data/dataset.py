@@ -7,6 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 import pandas as pd
 from typing import List, Dict, Tuple, Optional
+from google.cloud import storage
 
 class TranslationDataset(Dataset):
     def __init__(
@@ -43,17 +44,18 @@ class TranslationDataset(Dataset):
         source_text = str(self.source_texts[idx])
         target_text = str(self.target_texts[idx])
 
-        # Tokenize source text
+        # Set source language and tokenize source text
+        self.tokenizer.src_lang = self.src_lang
         source_encodings = self.tokenizer(
             source_text,
             max_length=self.max_length,
             padding="max_length",
             truncation=True,
-            return_tensors="pt",
-            src_lang=self.src_lang
+            return_tensors="pt"
         )
 
-        # Tokenize target text
+        # Set target language and tokenize target text
+        self.tokenizer.tgt_lang = self.tgt_lang
         with self.tokenizer.as_target_tokenizer():
             target_encodings = self.tokenizer(
                 target_text,
@@ -94,10 +96,29 @@ def prepare_dataset(
     Returns:
         TranslationDataset instance
     """
-    # Load the data
-    df = pd.read_csv(data_path)
-    source_texts = df['english'].tolist()
-    target_texts = df['rohingya'].tolist()
+    # Load the data from GCS or local file system
+    if data_path.startswith('gs://'):
+        # Download from GCS to temporary file
+        storage_client = storage.Client()
+        bucket_name = data_path.split('/')[2]
+        blob_path = '/'.join(data_path.split('/')[3:])
+        bucket = storage_client.bucket(bucket_name)
+        
+        # Load English data
+        en_blob = bucket.blob(f"{blob_path}.en")
+        en_content = en_blob.download_as_text()
+        source_texts = en_content.strip().split('\n')
+        
+        # Load Rohingya data
+        roh_blob = bucket.blob(f"{blob_path}.roh")
+        roh_content = roh_blob.download_as_text()
+        target_texts = roh_content.strip().split('\n')
+    else:
+        # Load from local files
+        with open(f"{data_path}.en", 'r', encoding='utf-8') as f:
+            source_texts = [line.strip() for line in f]
+        with open(f"{data_path}.roh", 'r', encoding='utf-8') as f:
+            target_texts = [line.strip() for line in f]
     
     return TranslationDataset(
         source_texts=source_texts,

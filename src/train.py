@@ -232,56 +232,56 @@ class Trainer:
             logger.error(f"Error during validation: {e}")
             raise
 
+def load_config(config_path: str):
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    return config
+
 def main():
     """Main function with improved error handling and cloud storage support."""
     try:
-        # Parse arguments
-        parser = argparse.ArgumentParser(description='Train Rohingya Translator')
-        parser.add_argument('--config', type=str, required=True, help='Path to config file')
-        parser.add_argument('--output_dir', type=str, required=True, help='Output directory')
-        parser.add_argument('--data_dir', type=str, required=True, help='Data directory')
-        args = parser.parse_args()
+        # Load config
+        config_path = os.getenv("CONFIG_PATH", "configs/model_config.yaml")
+        is_local_test = os.getenv("LOCAL_TEST", "false").lower() == "true"
         
-        # Load and process config
-        logger.info(f"Loading config from {args.config}")
-        if args.config.startswith('gs://'):
-            local_config = '/tmp/model_config.yaml'
-            config_path = download_from_gcs(args.config, local_config)
+        if is_local_test:
+            logger.info("Running in local test mode")
+            # Override config for local testing
+            config = load_config(config_path)
+            config["training"]["num_train_epochs"] = 1
+            config["training"]["per_device_train_batch_size"] = 2
+            config["training"]["per_device_eval_batch_size"] = 2
+            config["data"]["train_file"] = "temp_data/processed/train"
+            config["data"]["valid_file"] = "temp_data/processed/val"
+            config["data"]["test_file"] = "temp_data/processed/test"
         else:
-            config_path = args.config
-            
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
+            config = load_config(config_path)
         
         # Initialize model
         model = RohingyaTranslator(config['model'])
         
-        train_dataset = prepare_dataset(
-            f"{args.data_dir}/train",
-            config['data']['max_length'],
-            config['model']['src_lang'],
-            config['model']['tgt_lang'],
-            model.tokenizer
-        )
-        
-        val_dataset = prepare_dataset(
-            f"{args.data_dir}/val",
-            config['data']['max_length'],
-            config['model']['src_lang'],
-            config['model']['tgt_lang'],
-            model.tokenizer
-        )
-        
         # Initialize trainer
         trainer = Trainer(
             model=model,
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
+            train_dataset=prepare_dataset(
+                config["data"]["train_file"],
+                config['data']['max_length'],
+                config['model']['src_lang'],
+                config['model']['tgt_lang'],
+                model.tokenizer
+            ),
+            val_dataset=prepare_dataset(
+                config["data"]["valid_file"],
+                config['data']['max_length'],
+                config['model']['src_lang'],
+                config['model']['tgt_lang'],
+                model.tokenizer
+            ),
             batch_size=config['training']['per_device_train_batch_size'],
             learning_rate=config['training'].get('learning_rate', 2e-5),
             num_epochs=config['training']['num_train_epochs'],
             warmup_steps=config['training']['warmup_steps'],
-            output_dir=args.output_dir,
+            output_dir=os.getenv("OUTPUT_DIR", "outputs"),
             fp16=config['training'].get('fp16', False)
         )
         

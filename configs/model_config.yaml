@@ -2,12 +2,12 @@ model:
   name: "facebook/mbart-large-50"  # Full model name required
   max_length: 128
   src_lang: "en_XX"
-  tgt_lang: "roh_XX"
+  tgt_lang: "my_MM"
 
 training:
   num_train_epochs: 10
-  per_device_train_batch_size: 16
-  per_device_eval_batch_size: 16
+  per_device_train_batch_size: 8
+  per_device_eval_batch_size: 8
   warmup_steps: 500
   weight_decay: 0.01
   logging_steps: 10
