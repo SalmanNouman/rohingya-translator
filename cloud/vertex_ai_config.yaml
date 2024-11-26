@@ -5,11 +5,22 @@ workerPoolSpecs:
     acceleratorCount: 1
   replicaCount: 1
   containerSpec:
-    imageUri: gcr.io/airotech-442120/rohingya-translator:latest
-    args:
-      - --config=gs://airotechbkt/configs/model_config.yaml
-      - --output_dir=gs://airotechbkt/models/
-      - --data_dir=gs://airotechbkt/data/
+    imageUri: gcr.io/airotech-442120/rohingya-translator:v2-memory-opt
+    command: ["python", "-m", "torch.distributed.run", "--nproc_per_node=1", "src/train.py"]
+    args: []
+    env:
+      - name: PYTORCH_CUDA_ALLOC_CONF
+        value: "max_split_size_mb:128"
+      - name: CUDA_LAUNCH_BLOCKING
+        value: "1"
+      - name: NCCL_P2P_DISABLE
+        value: "1"
+      - name: CONFIG_PATH
+        value: "gs://rohingya-translator-data/configs/model_config.yaml"
+      - name: OUTPUT_DIR
+        value: "gs://rohingya-translator-data/models/"
+      - name: DATA_DIR
+        value: "gs://rohingya-translator-data/data/"
 
 scheduling:
   timeout: 86400s  # 24 hours

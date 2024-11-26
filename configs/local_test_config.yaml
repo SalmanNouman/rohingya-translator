@@ -1,0 +1,42 @@
+model:
+  name: "facebook/mbart-large-50"  # Base model name
+  max_length: 128
+  src_lang: "en_XX"
+  tgt_lang: "ar_AR"  # Using Arabic as a proxy for Rohingya
+  special_tokens:
+    - "<roh>"
+
+training:
+  num_train_epochs: 1  # Reduced for testing
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  warmup_steps: 10  # Reduced for testing
+  weight_decay: 0.01
+  logging_steps: 10  # More frequent logging for testing
+  evaluation_strategy: "steps"
+  eval_steps: 50  # More frequent evaluation for testing
+  save_steps: 50
+  save_total_limit: 2
+  fp16: false  # Disabled for local testing
+  gradient_accumulation_steps: 4  # Reduced for testing
+  gradient_checkpointing: false  # Disabled for local testing
+  max_grad_norm: 1.0
+  dataloader_num_workers: 0
+  torch_compile: false
+  learning_rate: 2e-5
+  optim: "adamw_torch"  # Using standard optimizer for testing
+  resume_from_checkpoint: null
+
+data:
+  train_file: "/app/data/processed/train"  # Local path
+  valid_file: "/app/data/processed/val"    # Local path
+  test_file: "/app/data/processed/test"    # Local path
+  max_length: 128
+  
+tokenizer:
+  model_name: "facebook/mbart-large-50"
+  special_tokens:
+    - "<roh>"
+  truncation: true
+  padding: "max_length"
+  return_tensors: "pt"

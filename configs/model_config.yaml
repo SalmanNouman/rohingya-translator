@@ -1,33 +1,52 @@
 model:
-  name: "facebook/mbart-large-50"  # Full model name required
+  name: "facebook/mbart-large-50"  # Base model name
   max_length: 128
   src_lang: "en_XX"
-  tgt_lang: "my_MM"
+  tgt_lang: "ar_AR"  # Using Arabic as a proxy for Rohingya
+  special_tokens:
+    - "<roh>"
 
 training:
   num_train_epochs: 10
-  per_device_train_batch_size: 8
-  per_device_eval_batch_size: 8
+  per_device_train_batch_size: 1  # Start with small batch size
+  per_device_eval_batch_size: 1
   warmup_steps: 500
   weight_decay: 0.01
-  logging_steps: 10
+  logging_steps: 100
   evaluation_strategy: "steps"
-  eval_steps: 500
+  eval_steps: 1000
   save_steps: 1000
-  save_total_limit: 2
-  fp16: true  # Use mixed precision if GPU available
-  gradient_accumulation_steps: 4
+  save_total_limit: 2  # Keep last 2 checkpoints
+  fp16: true  # Use mixed precision training
+  gradient_accumulation_steps: 16  # Accumulate gradients to simulate larger batch
+  gradient_checkpointing: true  # Enable gradient checkpointing
+  max_grad_norm: 1.0  # Clip gradients
+  dataloader_num_workers: 0  # Safer for cloud environment
+  torch_compile: false  # Disable torch compilation
+  learning_rate: 2e-5
+  optim: "adamw_torch_fused"  # Use fused optimizer for better memory efficiency
+  resume_from_checkpoint: null  # Set to checkpoint path to resume training
+  deepspeed:  # DeepSpeed configuration for memory optimization
+    zero_optimization:
+      stage: 2
+      offload_optimizer:
+        device: "cpu"
+      memory_efficient_linear: true
+      round_robin_gradients: true
+  max_split_size_mb: 128  # Prevent memory fragmentation
+  ddp_find_unused_parameters: false
+  torch_dynamo_mode: "reduce-overhead"
 
 data:
-  train_file: "gs://airotechbkt/data/processed/train"
-  valid_file: "gs://airotechbkt/data/processed/val"
-  test_file: "gs://airotechbkt/data/processed/test"
+  train_file: "gs://rohingya-translator-data/data/processed/train"  # Updated to correct bucket
+  valid_file: "gs://rohingya-translator-data/data/processed/val"
+  test_file: "gs://rohingya-translator-data/data/processed/test"
   max_length: 128
   
 tokenizer:
-  model_name: "facebook/mbart-large-50"  # Full model name required
+  model_name: "facebook/mbart-large-50"
   special_tokens:
-    - "<roh>"
+    - "<roh>"  # Rohingya special token
   truncation: true
   padding: "max_length"
   return_tensors: "pt"
