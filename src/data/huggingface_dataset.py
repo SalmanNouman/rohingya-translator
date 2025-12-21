@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 from typing import Dict, List
-from transformers import MBart50TokenizerFast
+from transformers import PreTrainedTokenizerFast
 from datasets import Dataset as HFDataset
 
 def setup_logging():
@@ -15,7 +15,7 @@ def setup_logging():
 class RohingyaHFDataset:
     def __init__(
         self,
-        tokenizer: MBart50TokenizerFast,
+        tokenizer: PreTrainedTokenizerFast,
         data_dir: Path,
         split: str = "train",
         max_length: int = 128
@@ -59,8 +59,7 @@ class RohingyaHFDataset:
             en_texts,
             max_length=self.max_length,
             padding="max_length",
-            truncation=True,
-            return_tensors="pt"
+            truncation=True
         )
         
         # Tokenize Rohingya targets
@@ -68,8 +67,7 @@ class RohingyaHFDataset:
             roh_texts,
             max_length=self.max_length,
             padding="max_length",
-            truncation=True,
-            return_tensors="pt"
+            truncation=True
         )
         
         model_inputs["labels"] = labels["input_ids"]
