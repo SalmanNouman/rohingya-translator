@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 import torch
 import json
-from transformers import MBartForConditionalGeneration, MBart50Tokenizer
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from src.models.transformer import RohingyaTranslator
 
 class TestRohingyaTranslator(unittest.TestCase):
@@ -14,8 +14,9 @@ class TestRohingyaTranslator(unittest.TestCase):
         cls.test_model_dir.mkdir(parents=True, exist_ok=True)
         
         # Save a small test model and tokenizer
-        tokenizer = MBart50Tokenizer.from_pretrained("facebook/mbart-large-50")
-        model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50")
+        model_name = "facebook/nllb-200-distilled-600M"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
         
         tokenizer.save_pretrained(str(cls.test_model_dir))
         model.save_pretrained(str(cls.test_model_dir))
@@ -23,7 +24,7 @@ class TestRohingyaTranslator(unittest.TestCase):
         # Save a dummy config
         config = {
             'src_lang': 'eng_Latn',
-            'tgt_lang': 'ben_Beng',
+            'tgt_lang': 'rhg_Latn',
             'base_model_name': 'facebook/nllb-200-distilled-600M',
             'max_length': 128
         }
@@ -37,7 +38,7 @@ class TestRohingyaTranslator(unittest.TestCase):
         self.assertIsNotNone(translator.model)
         self.assertIsNotNone(translator.tokenizer)
         self.assertEqual(translator.src_lang, "eng_Latn")
-        self.assertEqual(translator.tgt_lang, "ben_Beng")
+        self.assertEqual(translator.tgt_lang, "rhg_Latn")
     
     def test_translation(self):
         """Test basic translation functionality."""
