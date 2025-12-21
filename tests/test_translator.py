@@ -22,9 +22,9 @@ class TestRohingyaTranslator(unittest.TestCase):
         
         # Save a dummy config
         config = {
-            'src_lang': 'en_XX',
-            'tgt_lang': 'ar_AR',
-            'base_model_name': 'facebook/mbart-large-50',
+            'src_lang': 'eng_Latn',
+            'tgt_lang': 'ben_Beng',
+            'base_model_name': 'facebook/nllb-200-distilled-600M',
             'max_length': 128
         }
         with open(cls.test_model_dir / 'rohingya_translator_config.json', 'w') as f:
@@ -36,9 +36,8 @@ class TestRohingyaTranslator(unittest.TestCase):
         translator = RohingyaTranslator.from_pretrained(str(self.test_model_dir))
         self.assertIsNotNone(translator.model)
         self.assertIsNotNone(translator.tokenizer)
-        self.assertEqual(translator.tokenizer.src_lang, "en_XX")
-        # tgt_lang is set to ar_AR in transformer.py default logic or loaded from config
-        self.assertEqual(translator.tokenizer.tgt_lang, "ar_AR")
+        self.assertEqual(translator.src_lang, "eng_Latn")
+        self.assertEqual(translator.tgt_lang, "ben_Beng")
     
     def test_translation(self):
         """Test basic translation functionality."""
