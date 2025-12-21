@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from transformers import PreTrainedModel, PreTrainedTokenizer, MBart50Tokenizer, MBartForConditionalGeneration
-from typing import Optional, Tuple, Dict, Any
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
+from typing import Optional, Tuple, Dict, Any, List
 import gc
 import os
 import json
@@ -10,13 +10,13 @@ class RohingyaTranslator(nn.Module):
     def __init__(
         self,
         config: dict,
-        base_model_name: str = "facebook/mbart-large-50"
+        base_model_name: str = "facebook/nllb-200-distilled-600M"
     ):
         super().__init__()
         self.config = config
         self.max_length = config.get('max_length', 128)
-        self.src_lang = config.get('src_lang', 'en_XX')
-        self.tgt_lang = 'ar_AR'  # Using Arabic as a proxy for Rohingya since it's not in mBART-50's vocabulary
+        self.src_lang = config.get('src_lang', 'eng_Latn')
+        self.tgt_lang = config.get('tgt_lang', 'ben_Beng')  # Using Bengali as a proxy for Rohingya in NLLB
         self.base_model_name = base_model_name
         
         # Clear CUDA cache before model initialization
@@ -25,19 +25,17 @@ class RohingyaTranslator(nn.Module):
             gc.collect()
         
         # Initialize the tokenizer and model with memory optimizations
-        self.tokenizer = MBart50Tokenizer.from_pretrained(
+        self.tokenizer = AutoTokenizer.from_pretrained(
             base_model_name,
-            model_max_length=self.max_length,
-            padding_side="right",
-            truncation_side="right"
+            model_max_length=self.max_length
         )
         
-        # Add Rohingya special token and adjust vocab
+        # Add Rohingya special token if not present (NLLB has many, but we might want custom)
         special_tokens = config.get('special_tokens', ['<roh>'])
         self.tokenizer.add_special_tokens({'additional_special_tokens': special_tokens})
         
         # Load model with memory optimizations
-        self.model = MBartForConditionalGeneration.from_pretrained(
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(
             base_model_name,
             low_cpu_mem_usage=True,
             torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
@@ -47,12 +45,12 @@ class RohingyaTranslator(nn.Module):
         # Resize token embeddings to account for new special tokens
         self.model.resize_token_embeddings(len(self.tokenizer))
         
-        # Enable gradient checkpointing
-        self.model.gradient_checkpointing_enable()
+        # Enable gradient checkpointing for memory efficiency during training
+        if hasattr(self.model, "gradient_checkpointing_enable"):
+            self.model.gradient_checkpointing_enable()
         
         # Set source and target language
         self.tokenizer.src_lang = self.src_lang
-        self.tokenizer.tgt_lang = self.tgt_lang
 
     def save_pretrained(self, save_directory: str):
         """Save the model, tokenizer, and configuration to a directory."""
@@ -90,12 +88,13 @@ class RohingyaTranslator(nn.Module):
         instance = cls(config=config, base_model_name=config['base_model_name'])
         
         # Load model and tokenizer from the saved state
-        instance.model = MBartForConditionalGeneration.from_pretrained(pretrained_path)
-        instance.tokenizer = MBart50Tokenizer.from_pretrained(pretrained_path)
+        instance.model = AutoModelForSeq2SeqLM.from_pretrained(pretrained_path)
+        instance.tokenizer = AutoTokenizer.from_pretrained(pretrained_path)
         
         # Set language codes
-        instance.tokenizer.src_lang = config['src_lang']
-        instance.tokenizer.tgt_lang = config['tgt_lang']
+        instance.src_lang = config.get('src_lang', 'eng_Latn')
+        instance.tgt_lang = config.get('tgt_lang', 'ben_Beng')
+        instance.tokenizer.src_lang = instance.src_lang
         
         return instance
         
@@ -126,22 +125,26 @@ class RohingyaTranslator(nn.Module):
         **kwargs
     ) -> torch.Tensor:
         """Generate translations."""
+        # Get target language ID for NLLB
+        forced_bos_token_id = self.tokenizer.convert_tokens_to_ids(self.tgt_lang)
+        
         return self.model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            forced_bos_token_id=self.tokenizer.lang_code_to_id[self.tgt_lang],
+            forced_bos_token_id=forced_bos_token_id,
             **kwargs
         )
     
     def translate(
         self,
-        texts: list[str],
+        texts: List[str],
         max_length: Optional[int] = None,
         num_beams: int = 5,
         **kwargs
-    ) -> list[str]:
+    ) -> List[str]:
         """Translate a list of texts."""
         # Prepare the inputs
+        self.tokenizer.src_lang = self.src_lang
         inputs = self.tokenizer(
             texts,
             return_tensors="pt",
@@ -150,8 +153,9 @@ class RohingyaTranslator(nn.Module):
             max_length=max_length or self.max_length
         )
         
-        if torch.cuda.is_available():
-            inputs = {k: v.cuda() for k, v in inputs.items()}
+        # Move inputs to same device as model
+        device = next(self.model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         
         # Generate translations
         translated_tokens = self.generate(

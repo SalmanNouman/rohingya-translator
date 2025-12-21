@@ -177,7 +177,7 @@ class Trainer:
                 'global_step': self.global_step,
                 'current_epoch': self.current_epoch,
                 'best_eval_loss': self.best_eval_loss,
-                'model_type': 'RohingyaTranslator',
+                'model_type': 'RohingyaTranslator (NLLB-200)',
                 'framework': 'pytorch',
                 'task': 'translation',
                 'source_language': 'rohingya',
