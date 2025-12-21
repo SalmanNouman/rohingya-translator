@@ -50,6 +50,7 @@ data/processed/*
 !data/processed/.gitkeep
 models/*
 !models/.gitkeep
+temp_data/
 *.log
 wandb/
 

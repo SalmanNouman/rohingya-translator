@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
-from transformers import AdamW, get_linear_schedule_with_warmup
+from torch.optim import AdamW
+from transformers import get_linear_schedule_with_warmup
 from tqdm import tqdm
 import logging
 import sys
@@ -12,9 +13,9 @@ from google.cloud import storage
 import argparse
 import json
 
-from models.transformer import RohingyaTranslator
-from data.dataset import TranslationDataset, prepare_dataset
-from utils.metrics import compute_bleu_score, decode_predictions
+from src.models.transformer import RohingyaTranslator
+from src.data.dataset import TranslationDataset, prepare_dataset
+from src.utils.metrics import compute_bleu_score, decode_predictions
 
 # Configure logging
 logging.basicConfig(
@@ -39,11 +40,28 @@ class Trainer:
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         output_dir: str = "outputs",
         fp16: bool = False,
-        resume_from_checkpoint: Optional[str] = None,
         save_steps: int = 1000,
         logging_steps: int = 100,
         eval_steps: int = 1000
     ):
+        """
+        Initializes the Trainer class with model, datasets, and training parameters.
+        
+        Args:
+            model (RohingyaTranslator): Model instance for training.
+            train_dataset (TranslationDataset): Training dataset instance.
+            val_dataset (Optional[TranslationDataset]): Validation dataset instance. Defaults to None.
+            batch_size (int): Batch size for training. Defaults to 16.
+            learning_rate (float): Learning rate for the optimizer. Defaults to 2e-5.
+            num_epochs (int): Number of epochs for training. Defaults to 10.
+            warmup_steps (int): Number of warmup steps for the scheduler. Defaults to 0.
+            device (str): Device for training (cpu or cuda). Defaults to "cuda" if available.
+            output_dir (str): Output directory for checkpoints and logs. Defaults to "outputs".
+            fp16 (bool): Enable mixed precision training. Defaults to False.
+            save_steps (int): Save checkpoint every n steps. Defaults to 1000.
+            logging_steps (int): Log training progress every n steps. Defaults to 100.
+            eval_steps (int): Evaluate model every n steps. Defaults to 1000.
+        """
         self.model = model.to(device)
         self.device = device
         self.num_epochs = num_epochs
@@ -54,7 +72,11 @@ class Trainer:
         self.logging_steps = logging_steps
         self.eval_steps = eval_steps
         self.global_step = 0
+        self.current_epoch = 0
         self.best_eval_loss = float('inf')
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.warmup_steps = warmup_steps
         
         logger.info(f"Using device: {device}")
         logger.info(f"Output directory: {output_dir}")
@@ -80,99 +102,262 @@ class Trainer:
         
         # Setup optimizer and scheduler
         try:
-            self.optimizer = AdamW(model.parameters(), lr=learning_rate)
-            self.scheduler = get_linear_schedule_with_warmup(
-                self.optimizer,
-                num_warmup_steps=warmup_steps,
-                num_training_steps=len(self.train_loader) * num_epochs
-            )
-            
-            # Load checkpoint if specified
-            if resume_from_checkpoint:
-                self._load_checkpoint(resume_from_checkpoint)
-                
+            self.setup_optimizer_and_scheduler()
         except Exception as e:
             logger.error(f"Error setting up optimizer and scheduler: {e}")
             raise
 
-    def _load_checkpoint(self, checkpoint_path: str):
-        """Load checkpoint for model, optimizer, and scheduler."""
+    def setup_optimizer_and_scheduler(self):
+        """
+        Sets up the AdamW optimizer and linear scheduler with warmup steps.
+        
+        This method initializes the optimizer with the model parameters and learning rate,
+        and creates a linear scheduler with warmup steps for the training process.
+        
+        Raises:
+            Exception: If there's an error during optimizer or scheduler setup.
+        """
         try:
-            logger.info(f"Loading checkpoint from {checkpoint_path}")
-            checkpoint = torch.load(checkpoint_path)
-            
-            # Load model
-            self.model = RohingyaTranslator.from_pretrained(checkpoint['model_path'])
-            self.model.to(self.device)
-            
-            # Load optimizer and scheduler states
-            self.optimizer.load_state_dict(checkpoint['optimizer_state'])
-            self.scheduler.load_state_dict(checkpoint['scheduler_state'])
-            
-            # Load training state
-            self.global_step = checkpoint['global_step']
-            self.best_eval_loss = checkpoint.get('best_eval_loss', float('inf'))
-            
-            logger.info(f"Resumed training from step {self.global_step}")
+            self.optimizer = AdamW(self.model.parameters(), lr=self.learning_rate)
+            self.scheduler = get_linear_schedule_with_warmup(
+                self.optimizer,
+                num_warmup_steps=self.warmup_steps,
+                num_training_steps=len(self.train_loader) * self.num_epochs
+            )
         except Exception as e:
-            logger.error(f"Error loading checkpoint: {e}")
+            logger.error(f"Failed to setup optimizer and scheduler: {e}")
             raise
 
     def save_checkpoint(self, tag: str):
-        """Save model checkpoint with error handling."""
+        """
+        Saves a complete model checkpoint including model weights, optimizer state, and training metadata.
+        
+        Args:
+            tag (str): Unique identifier for the checkpoint, typically based on steps or epoch.
+            
+        The checkpoint includes:
+        - Model weights and configuration
+        - Tokenizer configuration
+        - Optimizer state
+        - Scheduler state
+        - Training metadata (epoch, step, best loss)
+        - Additional metadata about model type and training configuration
+        
+        If the output directory is a Google Cloud Storage path (starts with 'gs://'),
+        the checkpoint will be automatically uploaded to GCS.
+        
+        Raises:
+            Exception: If there's an error during checkpoint saving or GCS upload.
+        """
         try:
             checkpoint_dir = self.output_dir / f"checkpoint-{tag}"
-            checkpoint_dir.mkdir(exist_ok=True)
+            checkpoint_dir.mkdir(exist_ok=True, parents=True)
+            logger.info(f"Created checkpoint directory at {checkpoint_dir}")
             
-            # Save model
-            self.model.save_pretrained(str(checkpoint_dir))
+            # Get unwrapped model
+            unwrapped_model = self.model.module if hasattr(self.model, 'module') else self.model
             
-            # Save training state
-            checkpoint = {
-                'model_path': str(checkpoint_dir),
-                'optimizer_state': self.optimizer.state_dict(),
-                'scheduler_state': self.scheduler.state_dict(),
+            # Save the model and tokenizer
+            unwrapped_model.model.save_pretrained(str(checkpoint_dir))
+            unwrapped_model.tokenizer.save_pretrained(str(checkpoint_dir))
+            logger.info(f"Saved model and tokenizer to {checkpoint_dir}")
+            
+            # Save optimizer and scheduler states
+            torch.save({
+                'optimizer_state_dict': self.optimizer.state_dict(),
+                'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
                 'global_step': self.global_step,
-                'best_eval_loss': self.best_eval_loss
+                'current_epoch': self.current_epoch,
+                'best_eval_loss': self.best_eval_loss,
+            }, checkpoint_dir / "training_state.pt")
+            logger.info(f"Saved training state to {checkpoint_dir}/training_state.pt")
+            
+            # Save training metadata
+            metadata = {
+                'global_step': self.global_step,
+                'current_epoch': self.current_epoch,
+                'best_eval_loss': self.best_eval_loss,
+                'model_type': 'RohingyaTranslator',
+                'framework': 'pytorch',
+                'task': 'translation',
+                'source_language': 'rohingya',
+                'target_language': 'english',
+                'learning_rate': self.learning_rate,
+                'batch_size': self.batch_size,
+                'warmup_steps': self.warmup_steps
             }
             
-            torch.save(checkpoint, checkpoint_dir / "training_state.pt")
+            with open(checkpoint_dir / "metadata.json", "w") as f:
+                json.dump(metadata, f, indent=2)
+            logger.info(f"Saved metadata to {checkpoint_dir}/metadata.json")
+            
+            # List all files in checkpoint directory
+            logger.info("Files in checkpoint directory:")
+            for file_path in checkpoint_dir.rglob("*"):
+                if file_path.is_file():
+                    logger.info(f"  - {file_path.relative_to(checkpoint_dir)}")
+            
+            # Upload to GCS if the output directory is a GCS path
+            if str(self.output_dir).startswith("gs://"):
+                try:
+                    logger.info(f"Attempting to upload checkpoint to GCS at {self.output_dir}")
+                    storage_client = storage.Client()
+                    bucket_name = str(self.output_dir).split("/")[2]
+                    logger.info(f"Using bucket: {bucket_name}")
+                    bucket = storage_client.bucket(bucket_name)
+                    
+                    # Upload all files in the checkpoint directory
+                    for local_file in checkpoint_dir.rglob("*"):
+                        if local_file.is_file():
+                            # Get the path relative to the local checkpoint directory
+                            relative_path = local_file.relative_to(checkpoint_dir)
+                            # Construct the GCS blob path
+                            blob_path = f"models/checkpoint-{tag}/{relative_path}".replace("\\", "/")
+                            logger.info(f"Uploading {local_file} to gs://{bucket_name}/{blob_path}")
+                            blob = bucket.blob(blob_path)
+                            blob.upload_from_filename(str(local_file))
+                    logger.info(f"Successfully uploaded checkpoint to {self.output_dir}/checkpoint-{tag}")
+                except Exception as e:
+                    logger.error(f"Failed to upload checkpoint to GCS: {str(e)}")
+                    logger.error(f"Error type: {type(e).__name__}")
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+            
             logger.info(f"Saved checkpoint to {checkpoint_dir}")
             
-            # Upload to GCS if in cloud environment
-            if self.output_dir.as_posix().startswith('gs://'):
-                self._upload_to_gcs(checkpoint_dir)
-                
         except Exception as e:
-            logger.error(f"Error saving checkpoint: {e}")
-            logger.warning("Continuing training despite checkpoint error")
-
-    def _upload_to_gcs(self, source_dir: Path):
-        """Upload checkpoint to Google Cloud Storage."""
+            logger.error(f"Error saving checkpoint: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    def load_checkpoint(self, tag: str):
+        """
+        Loads a complete model checkpoint including model weights, optimizer state, and training metadata.
+        
+        Args:
+            tag (str): Identifier of the checkpoint to load.
+            
+        Returns:
+            bool: True if checkpoint was successfully loaded, False if checkpoint not found.
+            
+        The method loads:
+        - Model weights and configuration
+        - Tokenizer configuration
+        - Optimizer state
+        - Scheduler state
+        - Training state (epoch, step, best loss)
+        
+        Raises:
+            Exception: If there's an error during checkpoint loading.
+        """
         try:
-            storage_client = setup_cloud_storage()
-            if storage_client:
-                bucket_name = self.output_dir.as_posix().split('/')[2]
-                bucket = storage_client.bucket(bucket_name)
+            checkpoint_dir = self.output_dir / f"checkpoint-{tag}"
+            if not checkpoint_dir.exists():
+                logger.info(f"No checkpoint found at {checkpoint_dir}")
+                return False
                 
-                for filepath in source_dir.glob('**/*'):
-                    if filepath.is_file():
-                        blob_path = f"models/{source_dir.name}/{filepath.name}"
-                        blob = bucket.blob(blob_path)
-                        blob.upload_from_filename(filepath)
-                logger.info(f"Uploaded checkpoint to GCS: gs://{bucket_name}/models/{source_dir.name}")
+            # Get unwrapped model
+            unwrapped_model = self.model.module if hasattr(self.model, 'module') else self.model
+            
+            # Load the model and tokenizer
+            unwrapped_model.model = unwrapped_model.model.from_pretrained(str(checkpoint_dir))
+            unwrapped_model.tokenizer = unwrapped_model.tokenizer.from_pretrained(str(checkpoint_dir))
+            self.model = unwrapped_model.to(self.device)
+            
+            # Load training state
+            if (checkpoint_dir / "training_state.pt").exists():
+                training_state = torch.load(checkpoint_dir / "training_state.pt")
+                self.global_step = training_state['global_step']
+                self.current_epoch = training_state['current_epoch']
+                self.best_eval_loss = training_state['best_eval_loss']
+                
+                # Recreate optimizer and scheduler
+                self.setup_optimizer_and_scheduler()
+                
+                # Load their states
+                self.optimizer.load_state_dict(training_state['optimizer_state_dict'])
+                if self.scheduler and training_state['scheduler_state_dict']:
+                    self.scheduler.load_state_dict(training_state['scheduler_state_dict'])
+                
+            logger.info(f"Loaded checkpoint from {checkpoint_dir}")
+            logger.info(f"Resuming from epoch {self.current_epoch + 1}, global step {self.global_step}")
+            return True
+            
         except Exception as e:
-            logger.error(f"Error uploading to GCS: {e}")
-            logger.warning("Continuing training despite upload error")
+            logger.error(f"Error loading checkpoint: {e}")
+            return False
 
+    def save_model(self, tag: str):
+        """
+        Saves model to GCS.
+        
+        Args:
+            tag (str): Unique identifier for the model, typically based on steps or epoch.
+        
+        The method saves:
+        - Model weights and configuration
+        - Tokenizer configuration
+        - Training metadata (epoch, step, best loss)
+        
+        If the output directory is a Google Cloud Storage path (starts with 'gs://'),
+        the model will be automatically uploaded to GCS.
+        
+        Raises:
+            Exception: If there's an error during model saving or GCS upload.
+        """
+        try:
+            # Save model locally first
+            model_dir = self.output_dir / f"model-{tag}"
+            model_dir.mkdir(exist_ok=True, parents=True)
+            
+            # Get unwrapped model
+            unwrapped_model = self.model.module if hasattr(self.model, 'module') else self.model
+            
+            # Save the model and tokenizer using save_pretrained
+            unwrapped_model.model.save_pretrained(str(model_dir))
+            unwrapped_model.tokenizer.save_pretrained(str(model_dir))
+            
+            # Save training metadata
+            metadata = {
+                'global_step': self.global_step,
+                'best_eval_loss': self.best_eval_loss,
+                'model_type': 'RohingyaTranslator',
+                'framework': 'pytorch',
+                'task': 'translation',
+                'source_language': 'rohingya',
+                'target_language': 'english'
+            }
+            
+            with open(model_dir / "metadata.json", "w") as f:
+                json.dump(metadata, f)
+                
+            logger.info(f"Saved model to {model_dir}")
+            
+        except Exception as e:
+            logger.warning(f"Error saving model: {e}")
+            # Don't raise the error, just log it and continue training
+            
     def validate(self, epoch: int):
-        """Validation step with error handling."""
+        """
+        Validation step with error handling.
+        
+        Args:
+            epoch (int): Current epoch number.
+        
+        The method evaluates the model on the validation dataset and logs the validation loss.
+        
+        Raises:
+            Exception: If there's an error during validation.
+        """
         try:
             self.model.eval()
             total_val_loss = 0
+            num_batches = len(self.val_loader)
             
+            logger.info("Starting validation...")
             with torch.no_grad():
-                for batch in tqdm(self.val_loader, desc="Validation"):
+                for batch_idx, batch in enumerate(self.val_loader):
                     input_ids = batch['input_ids'].to(self.device)
                     attention_mask = batch['attention_mask'].to(self.device)
                     labels = batch['labels'].to(self.device)
@@ -184,29 +369,54 @@ class Trainer:
                     )
                     
                     total_val_loss += outputs.loss.item()
+                    
+                    if (batch_idx + 1) % 100 == 0:
+                        logger.info(f"Validated {batch_idx + 1}/{num_batches} batches")
             
-            avg_val_loss = total_val_loss / len(self.val_loader)
+            avg_val_loss = total_val_loss / num_batches
             logger.info(f"Validation loss after epoch {epoch+1}: {avg_val_loss:.4f}")
             
             # Save best model
             if avg_val_loss < self.best_eval_loss:
                 self.best_eval_loss = avg_val_loss
-                self.save_checkpoint("best")
+                self.save_model("best")
             
         except Exception as e:
-            logger.error(f"Error during validation: {e}")
-            logger.warning("Continuing training despite validation error")
+            logger.warning(f"Error during validation: {e}")
+            # Don't raise the error, just log it and continue training
 
     def train(self):
-        """Main training loop with improved error handling and logging."""
+        """
+        Main training loop with improved error handling and checkpoint recovery.
+        
+        The method trains the model for the specified number of epochs, saving checkpoints periodically.
+        
+        Raises:
+            Exception: If there's an error during training.
+        """
         logger.info("Starting training...")
+        
+        # Try to load latest checkpoint
+        latest_epoch = -1
+        for checkpoint_dir in self.output_dir.glob("checkpoint-epoch-*"):
+            try:
+                epoch_num = int(checkpoint_dir.name.split("-")[-1])
+                latest_epoch = max(latest_epoch, epoch_num)
+            except:
+                continue
+        
+        if latest_epoch >= 0:
+            logger.info(f"Found checkpoint for epoch {latest_epoch}")
+            self.load_checkpoint(f"epoch-{latest_epoch}")
+        
         try:
-            for epoch in range(self.num_epochs):
+            for epoch in range(self.current_epoch, self.num_epochs):
+                self.current_epoch = epoch
                 self.model.train()
                 total_loss = 0
-                progress_bar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.num_epochs}")
+                num_batches = len(self.train_loader)
                 
-                for step, batch in enumerate(progress_bar):
+                for step, batch in enumerate(self.train_loader):
                     try:
                         # Move batch to device
                         input_ids = batch['input_ids'].to(self.device)
@@ -226,51 +436,58 @@ class Trainer:
                         # Backward pass
                         loss.backward()
                         
-                        # Gradient clipping
-                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-                        
+                        # Update weights
                         self.optimizer.step()
                         self.scheduler.step()
                         self.optimizer.zero_grad()
                         
                         self.global_step += 1
                         
-                        # Update progress bar
-                        progress_bar.set_postfix({'loss': loss.item()})
-                        
-                        # Log every logging_steps
+                        # Log training progress
                         if self.global_step % self.logging_steps == 0:
-                            logger.info(f"Epoch: {epoch+1}, Step: {self.global_step}, Loss: {loss.item():.4f}")
-                            
-                        # Save checkpoint every save_steps
+                            avg_loss = total_loss / (step + 1)
+                            logger.info(f"Epoch {epoch+1} Step {self.global_step}/{num_batches}: Loss = {loss.item():.4f}, Avg Loss = {avg_loss:.4f}")
+                        
+                        # Save checkpoint periodically
                         if self.global_step % self.save_steps == 0:
                             self.save_checkpoint(f"step-{self.global_step}")
                             
-                        # Evaluate every eval_steps
-                        if self.val_loader and self.global_step % self.eval_steps == 0:
-                            self.validate(epoch)
-                            self.model.train()  # Resume training mode
-                            
-                    except Exception as e:
-                        logger.error(f"Error during training step: {e}")
+                    except Exception as batch_e:
+                        logger.error(f"Error processing batch: {batch_e}")
                         continue
                 
-                # Save checkpoint at end of epoch
+                # Log epoch stats
+                avg_loss = total_loss / num_batches
+                logger.info(f"Epoch {epoch+1}/{self.num_epochs} completed. Average loss: {avg_loss:.4f}")
+                
+                # Validate after each epoch
+                if self.val_loader:
+                    self.validate(epoch)
+                
+                # Save epoch checkpoint
                 self.save_checkpoint(f"epoch-{epoch+1}")
-                
-                avg_loss = total_loss / len(self.train_loader)
-                logger.info(f"Epoch {epoch+1} completed. Average loss: {avg_loss:.4f}")
-                
-        except KeyboardInterrupt:
-            logger.info("Training interrupted by user")
-            self.save_checkpoint("interrupted")
+            
+            # Save final checkpoint
+            self.save_checkpoint("final")
+            logger.info("Training completed successfully!")
+            
         except Exception as e:
-            logger.error(f"Training failed: {e}")
-            self.save_checkpoint("error")
+            logger.error(f"Error during training: {e}")
+            # Save emergency checkpoint
+            self.save_checkpoint("emergency")
             raise
 
 def setup_cloud_storage():
-    """Initialize Google Cloud Storage client if running in cloud environment."""
+    """
+    Initializes Google Cloud Storage client for cloud training environment.
+    
+    This function:
+    1. Checks if running in a cloud environment
+    2. Sets up authentication if needed
+    3. Initializes the GCS client for checkpoint storage
+    
+    The function is a no-op if not running in a cloud environment.
+    """
     try:
         storage_client = storage.Client()
         return storage_client
@@ -278,8 +495,19 @@ def setup_cloud_storage():
         logger.warning(f"Not running in cloud environment or missing credentials: {e}")
         return None
 
-def load_config(config_path: str):
-    """Load configuration file from local filesystem or Google Cloud Storage."""
+def load_config(config_path: str) -> dict:
+    """
+    Loads and parses a YAML configuration file from either local filesystem or Google Cloud Storage.
+    
+    Args:
+        config_path (str): Path to the configuration file. Can be local path or GCS path (gs://).
+        
+    Returns:
+        dict: Parsed configuration dictionary containing model and training parameters.
+        
+    Raises:
+        Exception: If the config file cannot be found or parsed.
+    """
     try:
         if config_path.startswith('gs://'):
             # Parse GCS path
@@ -324,10 +552,28 @@ def load_config(config_path: str):
         raise
 
 def main():
-    """Main function with improved error handling and cloud storage support."""
+    """
+    Main entry point for the training script.
+    
+    This function:
+    1. Parses command line arguments
+    2. Loads configuration from YAML file
+    3. Sets up cloud storage if needed
+    4. Initializes model, datasets, and trainer
+    5. Runs the training process
+    6. Handles any exceptions during training
+    
+    Command line arguments:
+    --config_path: Path to the YAML configuration file
+    """
+    parser = argparse.ArgumentParser(description="Rohingya Translator Training Script")
+    parser.add_argument("--config_path", type=str, default=None, help="Path to the YAML configuration file")
+    args = parser.parse_args()
+
     try:
-        # Load config
-        config_path = os.getenv("CONFIG_PATH", "configs/local_test_config.yaml")
+        # Load config - prioritize command line arg, then env var, then default
+        config_path = args.config_path or os.getenv("CONFIG_PATH", "configs/local_test_config.yaml")
+        logger.info(f"Loading configuration from: {config_path}")
         config = load_config(config_path)
         
         # Initialize model
@@ -358,8 +604,7 @@ def main():
             fp16=config['training'].get('fp16', False),
             save_steps=config['training'].get('save_steps', 1000),
             logging_steps=config['training'].get('logging_steps', 100),
-            eval_steps=config['training'].get('eval_steps', 1000),
-            resume_from_checkpoint=config['training'].get('resume_from_checkpoint', None)
+            eval_steps=config['training'].get('eval_steps', 1000)
         )
         
         # Start training

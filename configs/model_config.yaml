@@ -16,7 +16,7 @@ training:
   evaluation_strategy: "steps"
   eval_steps: 1000
   save_steps: 1000
-  save_total_limit: 2  # Keep last 2 checkpoints
+  save_total_limit: 3  # Keep last 3 checkpoints for safety
   fp16: true  # Use mixed precision training
   gradient_accumulation_steps: 16  # Accumulate gradients to simulate larger batch
   gradient_checkpointing: true  # Enable gradient checkpointing
@@ -24,23 +24,36 @@ training:
   dataloader_num_workers: 0  # Safer for cloud environment
   torch_compile: false  # Disable torch compilation
   learning_rate: 2e-5
-  optim: "adamw_torch_fused"  # Use fused optimizer for better memory efficiency
+  optim: "adamw_torch"  # Use standard AdamW instead of fused
   resume_from_checkpoint: null  # Set to checkpoint path to resume training
-  deepspeed:  # DeepSpeed configuration for memory optimization
+  
+  # Simplified DeepSpeed config for better stability
+  deepspeed:
     zero_optimization:
-      stage: 2
-      offload_optimizer:
-        device: "cpu"
+      stage: 1  # Use stage 1 instead of 2 for better stability
+      offload_optimizer: false  # Keep optimizer on GPU
       memory_efficient_linear: true
-      round_robin_gradients: true
+    activation_checkpointing:
+      partition_activations: true
+    aio:
+      block_size: 1048576
+      queue_depth: 8
+      single_submit: false
+      overlap_events: true
+    
   max_split_size_mb: 128  # Prevent memory fragmentation
   ddp_find_unused_parameters: false
-  torch_dynamo_mode: "reduce-overhead"
+  
+  # New: Backup saving options
+  save_safeguards:
+    verify_save: true  # Verify saved files
+    local_backup: true  # Keep local backup until GCS upload confirmed
+    save_on_cpu: true  # Move to CPU before saving if CUDA fails
 
 data:
-  train_file: "gs://rohingya-translator-data/data/processed/train"  # Updated to correct bucket
-  valid_file: "gs://rohingya-translator-data/data/processed/val"
-  test_file: "gs://rohingya-translator-data/data/processed/test"
+  train_file: "gs://rohingya-translator-vertex/data/processed/train"
+  valid_file: "gs://rohingya-translator-vertex/data/processed/val"
+  test_file: "gs://rohingya-translator-vertex/data/processed/test"
   max_length: 128
   
 tokenizer:

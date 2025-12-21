@@ -6,6 +6,7 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 import pandas as pd
+import re
 from typing import List, Dict, Tuple, Optional
 from google.cloud import storage
 
