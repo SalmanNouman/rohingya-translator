@@ -4,7 +4,7 @@ Test script for the trained Rohingya translator model.
 
 import argparse
 import torch
-from transformers import AutoModelForSeq2SeqGeneration, AutoTokenizer
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def load_model(model_path: str):
     """
-    Load the trained model and tokenizer.
+    Load the trained model and tokenizer, and move model to device.
     
     Args:
         model_path: Path to the trained model directory
@@ -20,17 +20,21 @@ def load_model(model_path: str):
     Returns:
         model: Loaded model
         tokenizer: Loaded tokenizer
+        device: Device the model is on
     """
     try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         tokenizer = AutoTokenizer.from_pretrained(model_path)
-        model = AutoModelForSeq2SeqGeneration.from_pretrained(model_path)
-        logger.info("Successfully loaded model and tokenizer")
-        return model, tokenizer
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
+        model.to(device)
+        model.eval()
+        logger.info(f"Successfully loaded model and tokenizer on {device}")
+        return model, tokenizer, device
     except Exception as e:
         logger.error(f"Error loading model: {str(e)}")
         raise
 
-def translate(text: str, model, tokenizer, max_length: int = 128):
+def translate(text: str, model, tokenizer, device, max_length: int = 128):
     """
     Translate text using the loaded model.
     
@@ -38,6 +42,7 @@ def translate(text: str, model, tokenizer, max_length: int = 128):
         text: Input text to translate
         model: Loaded translation model
         tokenizer: Loaded tokenizer
+        device: Device the model is on
         max_length: Maximum length of generated translation
         
     Returns:
@@ -46,6 +51,9 @@ def translate(text: str, model, tokenizer, max_length: int = 128):
     try:
         # Tokenize input text
         inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+        
+        # Move inputs to device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         
         # Generate translation
         outputs = model.generate(
@@ -72,10 +80,10 @@ def main():
     
     try:
         # Load model and tokenizer
-        model, tokenizer = load_model(args.model_path)
+        model, tokenizer, device = load_model(args.model_path)
         
         # Translate input text
-        translation = translate(args.input_text, model, tokenizer)
+        translation = translate(args.input_text, model, tokenizer, device)
         
         if translation:
             print(f"\nInput text: {args.input_text}")
