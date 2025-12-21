@@ -17,7 +17,6 @@ Recent achievements include:
 ```
 rohingya-translator/
 ├── cloud/              # Cloud deployment and Vertex AI scripts
-├── conductor/          # Project management and track plans
 ├── configs/            # Model and training configurations
 │   ├── cloud/         # Cloud-specific configs
 │   └── local/         # Local development configs
