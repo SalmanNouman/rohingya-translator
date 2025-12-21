@@ -1,55 +1,71 @@
 # Rohingya Translator
 
-A machine learning project to translate between English and Rohingya using the mBART-50 model.
+A machine learning project to translate between English and Rohingya. The project has recently been modernized to utilize the **NLLB-200** (No Language Left Behind) model, replacing the legacy mBART-50 implementation, to provide superior performance for low-resource languages.
 
 ## Project Status
 
-Currently in active development with the following milestones:
-- Initial project setup and repository structure
-- Data preprocessing pipeline
-- Model configuration for both local testing and cloud training
-- Docker containerization with GPU support
-- Cloud training pipeline on Google Vertex AI
-- Training in progress (Epoch 6/10)
-- Planned: Implement Bengali romanization for improved accuracy
+**Current Phase: Modernization & Stabilization (Completed)**
+
+Recent achievements include:
+- **Model Migration:** Successfully transitioned from mBART-50 to `facebook/nllb-200-distilled-600M`.
+- **Data Normalization:** Integrated a Bengali Romanization pipeline to normalize Rohingya script input.
+- **Environment Stabilization:** Fixed Docker and CUDA configurations for reliable GPU-accelerated training on Vertex AI.
+- **Cloud Integration:** Implemented robust model checkpointing and uploading to Google Cloud Storage (GCS).
 
 ## Project Structure
 
 ```
 rohingya-translator/
-├── cloud/              # Cloud deployment configurations
-├── configs/            # Model configurations
+├── cloud/              # Cloud deployment and Vertex AI scripts
+├── conductor/          # Project management and track plans
+├── configs/            # Model and training configurations
 │   ├── cloud/         # Cloud-specific configs
 │   └── local/         # Local development configs
 ├── data/              # Dataset directory
-│   ├── processed/     # Processed dataset files
-│   └── raw/          # Raw dataset files
+├── models/            # Saved models
 ├── src/               # Source code
-└── tests/             # Test files
+│   ├── data/          # Dataset loading and preprocessing
+│   ├── inference/     # Inference scripts
+│   ├── models/        # Model definitions (NLLB wrapper)
+│   └── preprocessing/ # Text normalization (Romanizer)
+└── tests/             # Unit and integration tests
 ```
 
 ## Setup
 
-1. Install dependencies:
+### 1. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-2. For local testing:
+### 2. Local Training & Testing
 - Use configurations in `configs/local/`
-- Run `python -m src.train --config_path configs/local/model_config.yaml`
+- Run the training loop:
+  ```bash
+  python -m src.train --config_path configs/local/model_config.yaml
+  ```
 
-3. For cloud training:
-- Build Docker image: `docker build -t gcr.io/airotech-442120/rohingya-translator:v2-memory-opt .`
-- Push to GCR: `docker push gcr.io/airotech-442120/rohingya-translator:v2-memory-opt`
-- Submit job to Vertex AI using `cloud/vertex_ai_config.yaml`
+### 3. Cloud Training (Vertex AI)
+- Build the Docker image:
+  ```bash
+  docker build -t gcr.io/airotech-442120/rohingya-translator:v3-t4-opt .
+  ```
+- Push to Google Container Registry (GCR):
+  ```bash
+  docker push gcr.io/airotech-442120/rohingya-translator:v3-t4-opt
+  ```
+- Submit a job to Vertex AI using the cloud configuration:
+  ```bash
+  # Ensure you have the google-cloud-aiplatform package installed and authenticated
+  python cloud/deploy_to_vertex.py --project-id <YOUR_PROJECT_ID>
+  ```
 
-## Current Challenges & Next Steps
+## Key Features
 
-1. Implementing Bengali romanization for improved linguistic accuracy
-2. Addressing CUDA environment setup in Docker container
-3. Optimizing checkpoint saving mechanism
-4. Improving validation logging
+- **NLLB-200 Core:** Utilizes Meta's state-of-the-art multilingual model.
+- **Script Normalization:** Automatically handles variations in Rohingya script using Bengali Romanization.
+- **Device Awareness:** Automatic detection of CUDA/CPU for inference.
+- **Cloud Native:** Built for seamless training on Google Cloud Vertex AI with direct GCS integration.
 
 ## License
 
