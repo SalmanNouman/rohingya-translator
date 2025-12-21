@@ -3,8 +3,8 @@ from pathlib import Path
 import numpy as np
 import torch
 from transformers import (
-    MBartForConditionalGeneration,
-    MBart50TokenizerFast,
+    AutoModelForSeq2SeqLM,
+    AutoTokenizer,
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer,
     DataCollatorForSeq2Seq
@@ -48,7 +48,7 @@ def train_model(
     eval_steps: int = 500,
     save_steps: int = 1000,
     max_length: int = 128,
-    model_name: str = "facebook/mbart-large-50"
+    model_name: str = "facebook/nllb-200-distilled-600M"
 ):
     """Train the translation model using HuggingFace's Seq2SeqTrainer."""
     logger = setup_logging()
@@ -56,16 +56,8 @@ def train_model(
     
     # Initialize tokenizer and model
     logger.info("Loading tokenizer and model...")
-    tokenizer = MBart50TokenizerFast.from_pretrained(model_name)
-    model = MBartForConditionalGeneration.from_pretrained(model_name)
-    
-    # Add Rohingya language token
-    tokenizer.add_special_tokens({'additional_special_tokens': ['<roh>']})
-    model.resize_token_embeddings(len(tokenizer))
-    
-    # Set source and target languages
-    tokenizer.src_lang = "en_XX"
-    tokenizer.tgt_lang = "roh_XX"  # Custom token for Rohingya
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     
     # Load datasets
     logger.info("Loading datasets...")
