@@ -6,8 +6,10 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 import pandas as pd
+import re
 from typing import List, Dict, Tuple, Optional
 from google.cloud import storage
+from src.preprocessing.bengali_romanizer import BengaliRomanizer
 
 class TranslationDataset(Dataset):
     def __init__(
@@ -16,8 +18,9 @@ class TranslationDataset(Dataset):
         target_texts: List[str],
         tokenizer: PreTrainedTokenizer,
         max_length: int = 128,
-        src_lang: str = "en_XX",
-        tgt_lang: str = "roh_XX"
+        src_lang: str = "eng_Latn",
+        tgt_lang: str = "rhg_Latn",
+        use_romanization: bool = False
     ):
         """
         Dataset for machine translation.
@@ -25,10 +28,11 @@ class TranslationDataset(Dataset):
         Args:
             source_texts: List of source language texts
             target_texts: List of target language texts (Rohingya)
-            tokenizer: MBart tokenizer
+            tokenizer: NLLB or compatible tokenizer
             max_length: Maximum sequence length
             src_lang: Source language code
             tgt_lang: Target language code
+            use_romanization: Whether to apply Bengali Romanization to target texts
         """
         self.source_texts = source_texts
         self.target_texts = target_texts
@@ -36,6 +40,8 @@ class TranslationDataset(Dataset):
         self.max_length = max_length
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
+        self.use_romanization = use_romanization
+        self.romanizer = BengaliRomanizer() if use_romanization else None
 
     def __len__(self) -> int:
         return len(self.source_texts)
@@ -44,8 +50,16 @@ class TranslationDataset(Dataset):
         source_text = str(self.source_texts[idx])
         target_text = str(self.target_texts[idx])
 
-        # Set source language and tokenize source text
+        # Apply romanization if enabled
+        if self.use_romanization and self.romanizer:
+            target_text = self.romanizer.romanize(target_text)
+
+        # Tokenize source and target text
+        # NLLB uses src_lang and tgt_lang attributes
         self.tokenizer.src_lang = self.src_lang
+        self.tokenizer.tgt_lang = self.tgt_lang
+        
+        # Tokenize source
         source_encodings = self.tokenizer(
             source_text,
             max_length=self.max_length,
@@ -53,17 +67,15 @@ class TranslationDataset(Dataset):
             truncation=True,
             return_tensors="pt"
         )
-
-        # Set target language and tokenize target text
-        self.tokenizer.tgt_lang = self.tgt_lang
-        with self.tokenizer.as_target_tokenizer():
-            target_encodings = self.tokenizer(
-                target_text,
-                max_length=self.max_length,
-                padding="max_length",
-                truncation=True,
-                return_tensors="pt"
-            )
+        
+        # Tokenize target using text_target
+        target_encodings = self.tokenizer(
+            text_target=target_text,
+            max_length=self.max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt"
+        )
 
         # Remove batch dimension added by tokenizer
         input_ids = source_encodings["input_ids"].squeeze(0)
@@ -81,7 +93,8 @@ def prepare_dataset(
     max_length: int,
     src_lang: str,
     tgt_lang: str,
-    tokenizer: PreTrainedTokenizer
+    tokenizer: PreTrainedTokenizer,
+    use_romanization: bool = False
 ) -> TranslationDataset:
     """
     Prepare a dataset for training or evaluation.
@@ -91,7 +104,8 @@ def prepare_dataset(
         max_length: Maximum sequence length
         src_lang: Source language code
         tgt_lang: Target language code
-        tokenizer: MBart tokenizer
+        tokenizer: NLLB or compatible tokenizer
+        use_romanization: Whether to apply Bengali Romanization to target texts
         
     Returns:
         TranslationDataset instance
@@ -126,7 +140,8 @@ def prepare_dataset(
         tokenizer=tokenizer,
         max_length=max_length,
         src_lang=src_lang,
-        tgt_lang=tgt_lang
+        tgt_lang=tgt_lang,
+        use_romanization=use_romanization
     )
 
 class RohingyaDataset:
@@ -138,11 +153,6 @@ class RohingyaDataset:
     ):
         """
         Dataset processor for Rohingya-English parallel texts.
-        
-        Args:
-            data_dir: Directory containing raw data files
-            output_dir: Directory to save processed data
-            min_freq: Minimum frequency for words to be included in vocabulary
         """
         self.data_dir = Path(data_dir)
         self.output_dir = Path(output_dir)
@@ -167,12 +177,7 @@ class RohingyaDataset:
         self.parallel_texts: List[Tuple[str, str, str]] = []
     
     def load_data(self, filename: str) -> None:
-        """
-        Load data from a CSV file containing parallel texts.
-        
-        Args:
-            filename: Name of the CSV file to load
-        """
+        """Load data from a CSV file containing parallel texts."""
         try:
             df = pd.read_csv(self.data_dir / filename)
             required_columns = ['english', 'rohingya', 'word_type']
@@ -215,38 +220,16 @@ class RohingyaDataset:
         self.logger.info(f"- Word types: {dict(self.word_types)}")
     
     def _tokenize(self, text: str) -> List[str]:
-        """
-        Simple tokenization for vocabulary building.
-        
-        Args:
-            text: Text to tokenize
-            
-        Returns:
-            List of tokens
-        """
-        # Convert to lowercase and split on whitespace
+        """Simple tokenization for vocabulary building."""
         text = text.lower()
-        
-        # Remove punctuation except apostrophes within words
-        text = re.sub(r'[^\w\s\']', ' ', text)
-        text = re.sub(r'\s\'|\'\s', ' ', text)
-        
+        text = re.sub(r"[^\w\s']", ' ', text)
+        text = re.sub(r"\s'|'\s", ' ', text)
         return [word for word in text.split() if word]
     
     def get_vocabulary(self, language: str, min_freq: Optional[int] = None) -> Dict[str, int]:
-        """
-        Get vocabulary for specified language.
-        
-        Args:
-            language: 'english' or 'rohingya'
-            min_freq: Minimum frequency for words (defaults to self.min_freq)
-            
-        Returns:
-            Dictionary of words and their frequencies
-        """
+        """Get vocabulary for specified language."""
         if min_freq is None:
             min_freq = self.min_freq
-            
         vocab = self.english_vocab if language == 'english' else self.rohingya_vocab
         return {word: freq for word, freq in vocab.items() if freq >= min_freq}
     
@@ -255,27 +238,14 @@ class RohingyaDataset:
         return dict(self.word_types)
     
     def filter_by_word_type(self, word_types: List[str]) -> List[Tuple[str, str, str]]:
-        """
-        Filter parallel texts by word type.
-        
-        Args:
-            word_types: List of word types to include
-            
-        Returns:
-            Filtered list of parallel texts
-        """
+        """Filter parallel texts by word type."""
         return [
             (eng, roh, wt) for eng, roh, wt in self.parallel_texts
             if wt in word_types
         ]
     
     def save_processed_data(self, filename: str) -> None:
-        """
-        Save processed parallel texts to CSV.
-        
-        Args:
-            filename: Output filename
-        """
+        """Save processed parallel texts to CSV."""
         df = pd.DataFrame(
             self.parallel_texts,
             columns=['english', 'rohingya', 'word_type']

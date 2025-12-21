@@ -1,8 +1,9 @@
 import unittest
 from pathlib import Path
 import torch
-from transformers import MBartForConditionalGeneration, MBart50TokenizerFast
-from src.model.translate import RohingyaTranslator
+import json
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+from src.models.transformer import RohingyaTranslator
 
 class TestRohingyaTranslator(unittest.TestCase):
     @classmethod
@@ -13,43 +14,58 @@ class TestRohingyaTranslator(unittest.TestCase):
         cls.test_model_dir.mkdir(parents=True, exist_ok=True)
         
         # Save a small test model and tokenizer
-        tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50")
-        model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50")
+        model_name = "facebook/nllb-200-distilled-600M"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
         
         tokenizer.save_pretrained(str(cls.test_model_dir))
         model.save_pretrained(str(cls.test_model_dir))
+        
+        # Save a dummy config
+        config = {
+            'src_lang': 'eng_Latn',
+            'tgt_lang': 'rhg_Latn',
+            'base_model_name': 'facebook/nllb-200-distilled-600M',
+            'max_length': 128
+        }
+        with open(cls.test_model_dir / 'rohingya_translator_config.json', 'w') as f:
+            json.dump(config, f)
     
     def test_translator_initialization(self):
         """Test translator initialization."""
-        translator = RohingyaTranslator(self.test_model_dir)
+        # Use from_pretrained as intended
+        translator = RohingyaTranslator.from_pretrained(str(self.test_model_dir))
         self.assertIsNotNone(translator.model)
         self.assertIsNotNone(translator.tokenizer)
-        self.assertEqual(translator.tokenizer.src_lang, "en_XX")
-        self.assertEqual(translator.tokenizer.tgt_lang, "roh_XX")
+        self.assertEqual(translator.src_lang, "eng_Latn")
+        self.assertEqual(translator.tgt_lang, "rhg_Latn")
     
     def test_translation(self):
         """Test basic translation functionality."""
-        translator = RohingyaTranslator(self.test_model_dir)
+        translator = RohingyaTranslator.from_pretrained(str(self.test_model_dir))
         test_text = "Hello, world!"
         
-        translation = translator.translate(test_text)
-        self.assertIsInstance(translation, str)
+        # Note: translate expects a list of texts in current implementation
+        translation = translator.translate([test_text])
+        self.assertIsInstance(translation, list)
         self.assertGreater(len(translation), 0)
+        self.assertIsInstance(translation[0], str)
     
     def test_translation_with_long_text(self):
         """Test translation with text longer than max_length."""
-        translator = RohingyaTranslator(self.test_model_dir)
+        translator = RohingyaTranslator.from_pretrained(str(self.test_model_dir))
         long_text = "Hello " * 100
         
-        translation = translator.translate(long_text, max_length=128)
-        self.assertIsInstance(translation, str)
+        translation = translator.translate([long_text], max_length=128)
+        self.assertIsInstance(translation, list)
         self.assertGreater(len(translation), 0)
     
     @classmethod
     def tearDownClass(cls):
         """Clean up test files."""
         import shutil
-        shutil.rmtree(cls.test_model_dir)
+        if cls.test_model_dir.exists():
+            shutil.rmtree(cls.test_model_dir)
 
 if __name__ == '__main__':
     unittest.main()

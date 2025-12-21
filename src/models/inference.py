@@ -1,6 +1,6 @@
 from pathlib import Path
 import torch
-from transformers import MBartForConditionalGeneration, MBart50TokenizerFast
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 import logging
 
 def setup_logging():
@@ -18,13 +18,14 @@ class RohingyaTranslator:
         
         # Load model and tokenizer
         self.logger.info(f"Loading model from {model_path}...")
-        self.tokenizer = MBart50TokenizerFast.from_pretrained(str(model_path))
-        self.model = MBartForConditionalGeneration.from_pretrained(str(model_path))
+        self.tokenizer = AutoTokenizer.from_pretrained(str(model_path))
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(str(model_path))
         self.model.to(self.device)
+        self.model.eval()
         
-        # Set source and target languages
-        self.tokenizer.src_lang = "en_XX"
-        self.tokenizer.tgt_lang = "roh_XX"
+        # Set source and target languages for NLLB
+        self.tokenizer.src_lang = "eng_Latn"
+        self.tokenizer.tgt_lang = "rhg_Latn"
     
     def translate(self, text: str, max_length: int = 128) -> str:
         """Translate English text to Rohingya."""
@@ -44,7 +45,7 @@ class RohingyaTranslator:
             num_beams=5,
             length_penalty=1.0,
             early_stopping=True,
-            forced_bos_token_id=self.tokenizer.lang_code_to_id["roh_XX"]
+            forced_bos_token_id=self.tokenizer.convert_tokens_to_ids(self.tokenizer.tgt_lang)
         )
         
         # Decode translation
