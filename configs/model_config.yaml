@@ -40,6 +40,7 @@ data:
   valid_file: "data/processed/val"
   test_file: "data/processed/test"
   max_length: 128
+  use_romanization: true
   
 tokenizer:
   model_name: "facebook/nllb-200-distilled-600M"

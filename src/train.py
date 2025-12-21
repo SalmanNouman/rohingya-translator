@@ -587,14 +587,16 @@ def main():
                 config['data']['max_length'],
                 config['model']['src_lang'],
                 config['model']['tgt_lang'],
-                model.tokenizer
+                model.tokenizer,
+                use_romanization=config['data'].get('use_romanization', False)
             ),
             val_dataset=prepare_dataset(
                 config["data"]["valid_file"],
                 config['data']['max_length'],
                 config['model']['src_lang'],
                 config['model']['tgt_lang'],
-                model.tokenizer
+                model.tokenizer,
+                use_romanization=config['data'].get('use_romanization', False)
             ),
             batch_size=config['training']['per_device_train_batch_size'],
             learning_rate=config['training'].get('learning_rate', 2e-5),

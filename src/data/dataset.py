@@ -9,6 +9,7 @@ import pandas as pd
 import re
 from typing import List, Dict, Tuple, Optional
 from google.cloud import storage
+from src.preprocessing.bengali_romanizer import BengaliRomanizer
 
 class TranslationDataset(Dataset):
     def __init__(
@@ -18,7 +19,8 @@ class TranslationDataset(Dataset):
         tokenizer: PreTrainedTokenizer,
         max_length: int = 128,
         src_lang: str = "en_XX",
-        tgt_lang: str = "roh_XX"
+        tgt_lang: str = "roh_XX",
+        use_romanization: bool = False
     ):
         """
         Dataset for machine translation.
@@ -30,6 +32,7 @@ class TranslationDataset(Dataset):
             max_length: Maximum sequence length
             src_lang: Source language code
             tgt_lang: Target language code
+            use_romanization: Whether to apply Bengali Romanization to target texts
         """
         self.source_texts = source_texts
         self.target_texts = target_texts
@@ -37,6 +40,8 @@ class TranslationDataset(Dataset):
         self.max_length = max_length
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
+        self.use_romanization = use_romanization
+        self.romanizer = BengaliRomanizer() if use_romanization else None
 
     def __len__(self) -> int:
         return len(self.source_texts)
@@ -44,6 +49,10 @@ class TranslationDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         source_text = str(self.source_texts[idx])
         target_text = str(self.target_texts[idx])
+
+        # Apply romanization if enabled
+        if self.use_romanization and self.romanizer:
+            target_text = self.romanizer.romanize(target_text)
 
         # Set source language and tokenize source text
         self.tokenizer.src_lang = self.src_lang
@@ -56,6 +65,10 @@ class TranslationDataset(Dataset):
         )
 
         # Set target language and tokenize target text
+        # For NLLB, tgt_lang is handled via forced_bos_token_id in generate,
+        # but for training we still need to set it for the tokenizer if using as_target_tokenizer
+        # (Though NLLB doesn't use as_target_tokenizer the same way as MBart, 
+        # we keep it for compatibility or adjust if needed)
         self.tokenizer.tgt_lang = self.tgt_lang
         with self.tokenizer.as_target_tokenizer():
             target_encodings = self.tokenizer(
@@ -82,7 +95,8 @@ def prepare_dataset(
     max_length: int,
     src_lang: str,
     tgt_lang: str,
-    tokenizer: PreTrainedTokenizer
+    tokenizer: PreTrainedTokenizer,
+    use_romanization: bool = False
 ) -> TranslationDataset:
     """
     Prepare a dataset for training or evaluation.
@@ -93,6 +107,7 @@ def prepare_dataset(
         src_lang: Source language code
         tgt_lang: Target language code
         tokenizer: MBart tokenizer
+        use_romanization: Whether to apply Bengali Romanization to target texts
         
     Returns:
         TranslationDataset instance
@@ -127,7 +142,8 @@ def prepare_dataset(
         tokenizer=tokenizer,
         max_length=max_length,
         src_lang=src_lang,
-        tgt_lang=tgt_lang
+        tgt_lang=tgt_lang,
+        use_romanization=use_romanization
     )
 
 class RohingyaDataset:
