@@ -43,13 +43,7 @@ def upload_directory_to_gcs(local_path: str, bucket_name: str, gcs_path: str, pr
 
 def setup_gcs_directories(project_id: str, bucket_name: str):
     """Set up necessary GCS directories and upload initial data."""
-    # Upload configs
-    upload_directory_to_gcs(
-        "configs",
-        bucket_name,
-        "configs",
-        project_id
-    )
+
     
     # Upload data if it exists
     upload_directory_to_gcs(
@@ -118,7 +112,7 @@ def main():
     parser.add_argument("--project-id", required=True, help="Google Cloud project ID")
     parser.add_argument("--location", default="us-central1", help="Region for the training job")
     parser.add_argument("--job-name", default="rohingya-translator-training", help="Display name for the job")
-    parser.add_argument("--config", default="cloud/vertex_ai_config.yaml", help="Path to job config YAML")
+    parser.add_argument("--config", default="src/cloud/vertex_ai_config.yaml", help="Path to job config YAML")
     
     args = parser.parse_args()
     deploy_training_job(args.project_id, args.location, args.job_name, args.config)

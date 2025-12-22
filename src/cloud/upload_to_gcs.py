@@ -47,7 +47,7 @@ def verify_gcs_data(bucket_name: str, project_id: str):
     bucket = storage_client.bucket(bucket_name)
     
     required_files = [
-        'configs/model_config.yaml',
+    required_files = [
         'data/processed/train.en',
         'data/processed/train.roh',
         'data/processed/val.en',
@@ -93,8 +93,7 @@ def main():
     upload_directory(args.bucket, data_dir, 'data', args.project, args.location)
     
     # Upload configurations
-    config_dir = Path('configs')
-    upload_directory(args.bucket, config_dir, 'configs', args.project, args.location)
+
     
     print("Upload complete!")
 

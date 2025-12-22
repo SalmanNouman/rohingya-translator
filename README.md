@@ -16,13 +16,10 @@ Recent achievements include:
 
 ```
 rohingya-translator/
-├── cloud/              # Cloud deployment and Vertex AI scripts
-├── configs/            # Model and training configurations
-│   ├── cloud/         # Cloud-specific configs
-│   └── local/         # Local development configs
 ├── data/              # Dataset directory
 ├── models/            # Saved models
 ├── src/               # Source code
+│   ├── cloud/         # Cloud deployment and Vertex AI scripts
 │   ├── data/          # Dataset loading and preprocessing
 │   ├── inference/     # Inference scripts
 │   ├── models/        # Model definitions (NLLB wrapper)
@@ -55,7 +52,7 @@ pip install -r requirements.txt
 - Submit a job to Vertex AI using the cloud configuration:
   ```bash
   # Ensure you have the google-cloud-aiplatform package installed and authenticated
-  python cloud/deploy_to_vertex.py --project-id <YOUR_PROJECT_ID>
+  python src/cloud/deploy_to_vertex.py --project-id <YOUR_PROJECT_ID>
   ```
 
 ## Key Features
