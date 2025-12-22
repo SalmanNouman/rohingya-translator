@@ -38,10 +38,9 @@ pip install -r requirements.txt
 ```
 
 ### 2. Local Training & Testing
-- Use configurations in `configs/local/`
 - Run the training loop:
   ```bash
-  python -m src.train --config_path configs/local/model_config.yaml
+  python -m src.train --data_dir data/processed --output_dir outputs/model --epochs 10
   ```
 
 ### 3. Cloud Training (Vertex AI)

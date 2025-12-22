@@ -38,6 +38,13 @@ def test_preprocess_returns_lists_not_tensors():
     dataset.tokenizer = MockTokenizer()
     dataset.max_length = 128
     
+    # Mock romanizer as it is now required by preprocess_function
+    class MockRomanizer:
+        def romanize(self, text):
+            return text
+            
+    dataset.romanizer = MockRomanizer()
+    
     examples = {
         'translation': [
             {'en': 'hello', 'roh': 'hola'},

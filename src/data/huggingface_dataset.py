@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Dict, List
 from transformers import PreTrainedTokenizerFast
 from datasets import Dataset as HFDataset
+from src.preprocessing.bengali_romanizer import BengaliRomanizer
 
 def setup_logging():
     """Setup logging configuration."""
@@ -24,6 +25,7 @@ class RohingyaHFDataset:
         self.data_dir = data_dir
         self.split = split
         self.max_length = max_length
+        self.romanizer = BengaliRomanizer()
         
         # Load the data
         self.english_texts = self._load_texts(f"{split}.en")
@@ -53,6 +55,9 @@ class RohingyaHFDataset:
         """Preprocess the examples by tokenizing."""
         en_texts = [ex['en'] for ex in examples['translation']]
         roh_texts = [ex['roh'] for ex in examples['translation']]
+        
+        # Apply romanization to Rohingya texts
+        roh_texts = [self.romanizer.romanize(text) for text in roh_texts]
         
         # Tokenize English inputs
         model_inputs = self.tokenizer(

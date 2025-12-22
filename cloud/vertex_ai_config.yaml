@@ -13,20 +13,18 @@ workerPoolSpecs:
           value: "max_split_size_mb:128"
         - name: TORCH_CUDA_ARCH_LIST
           value: "7.5"  # T4 architecture
-        - name: CONFIG_PATH
-          value: "gs://rohingya-translator-vertex/configs/model_config.yaml"
-        - name: OUTPUT_DIR
-          value: "gs://rohingya-translator-vertex/models/"
         - name: DATA_DIR
-          value: "gs://rohingya-translator-vertex/data/"
-        - name: MODEL_REGISTRY_PATH
-          value: "gs://rohingya-translator-vertex/model-registry/"
-        - name: SAVE_LOCAL
-          value: "true"
-        - name: LOCAL_MODEL_DIR
-          value: "/app/models"
-        - name: AIP_ENABLE_SSH
-          value: "true"
+          value: "/gcs/rohingya-translator-vertex/data" # Use GCS FUSE mount
+        - name: OUTPUT_DIR
+          value: "/app/models" # Local output dir before upload
+        - name: GCS_BUCKET
+          value: "rohingya-translator-vertex"
+        - name: GCS_PROJECT
+          value: "airotech-442120"
+        - name: NUM_EPOCHS
+          value: "10"
+        - name: BATCH_SIZE
+          value: "16"
 
 scheduling:
   timeout: 86400  # 24 hours
