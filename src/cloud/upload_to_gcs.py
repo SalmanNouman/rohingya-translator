@@ -47,7 +47,6 @@ def verify_gcs_data(bucket_name: str, project_id: str):
     bucket = storage_client.bucket(bucket_name)
     
     required_files = [
-    required_files = [
         'data/processed/train.en',
         'data/processed/train.roh',
         'data/processed/val.en',
@@ -91,9 +90,6 @@ def main():
     # Upload data
     data_dir = Path('data')
     upload_directory(args.bucket, data_dir, 'data', args.project, args.location)
-    
-    # Upload configurations
-
     
     print("Upload complete!")
 

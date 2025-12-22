@@ -26,10 +26,8 @@ RUN grep -vE "torch|transformers" requirements.txt > requirements_filtered.txt &
     pip install --no-cache-dir -r requirements_filtered.txt && \
     rm requirements_filtered.txt
 
-# Copy only necessary files
+# Copy source files
 COPY src/ src/
-COPY configs/ configs/
-COPY cloud/ cloud/
 
 # Default command
 CMD ["python", "-m", "src.train"]

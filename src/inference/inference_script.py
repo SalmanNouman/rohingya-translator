@@ -6,6 +6,7 @@ import argparse
 import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 import logging
+from src.preprocessing.bengali_romanizer import BengaliRomanizer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -76,17 +77,27 @@ def main():
     parser = argparse.ArgumentParser(description="Test the trained Rohingya translator model")
     parser.add_argument("--model_path", type=str, required=True, help="Path to the trained model directory")
     parser.add_argument("--input_text", type=str, required=True, help="Text to translate")
+    parser.add_argument("--romanize", action="store_true", help="Apply Bengali romanization to input (use if input contains Bengali script)")
     args = parser.parse_args()
     
     try:
         # Load model and tokenizer
         model, tokenizer, device = load_model(args.model_path)
         
+        # Apply romanization if requested (to match training preprocessing)
+        input_text = args.input_text
+        if args.romanize:
+            romanizer = BengaliRomanizer()
+            input_text = romanizer.romanize(input_text)
+            logger.info(f"Romanized input: {input_text}")
+        
         # Translate input text
-        translation = translate(args.input_text, model, tokenizer, device)
+        translation = translate(input_text, model, tokenizer, device)
         
         if translation:
             print(f"\nInput text: {args.input_text}")
+            if args.romanize:
+                print(f"Romanized: {input_text}")
             print(f"Translation: {translation}\n")
         else:
             print("Translation failed.")

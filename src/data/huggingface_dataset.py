@@ -27,16 +27,34 @@ class RohingyaHFDataset:
         self.max_length = max_length
         self.romanizer = BengaliRomanizer()
         
-        # Load the data
+        # Load the data with validation
         self.english_texts = self._load_texts(f"{split}.en")
         self.rohingya_texts = self._load_texts(f"{split}.roh")
+        
+        # Validate line counts match
+        if len(self.english_texts) != len(self.rohingya_texts):
+            raise ValueError(
+                f"Data mismatch in {split} split: "
+                f"English has {len(self.english_texts)} lines, "
+                f"Rohingya has {len(self.rohingya_texts)} lines. "
+                f"Both files must have the same number of parallel sentences."
+            )
+        
+        if len(self.english_texts) == 0:
+            raise ValueError(f"No data found in {split} split. Check your data files.")
         
         # Convert to HuggingFace dataset
         self.dataset = self._create_hf_dataset()
     
     def _load_texts(self, filename: str) -> List[str]:
         """Load texts from a file."""
-        with open(self.data_dir / filename, 'r', encoding='utf-8') as f:
+        file_path = self.data_dir / filename
+        if not file_path.exists():
+            raise FileNotFoundError(
+                f"Data file not found: {file_path}. "
+                f"Ensure your data directory contains {filename}."
+            )
+        with open(file_path, 'r', encoding='utf-8') as f:
             return [line.strip() for line in f]
     
     def _create_hf_dataset(self) -> HFDataset:
