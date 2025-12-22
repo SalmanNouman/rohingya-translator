@@ -10,7 +10,7 @@ def test_romanizer_initialized():
     
     # Mocking file operations to allow __init__ to complete without real files
     with patch('builtins.open', mock_open(read_data="sample text")), \
-         patch('src.data.huggingface_dataset.HFDataset.from_dict') as mock_hf_ds:
+         patch('src.data.huggingface_dataset.HFDataset.from_dict') as _mock_hf_ds:
         
         dataset = RohingyaHFDataset(mock_tokenizer, mock_path)
         

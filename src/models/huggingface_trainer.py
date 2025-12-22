@@ -15,7 +15,7 @@ from transformers import (
 )
 import evaluate
 from src.data.huggingface_dataset import RohingyaHFDataset, setup_logging
-from cloud.upload_to_gcs import upload_directory
+from src.cloud.upload_to_gcs import upload_directory
 
 class GCSCheckpointCallback(TrainerCallback):
     """Callback to upload the best model checkpoint to GCS."""
