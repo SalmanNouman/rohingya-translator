@@ -7,10 +7,48 @@ from transformers import (
     AutoTokenizer,
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer,
-    DataCollatorForSeq2Seq
+    DataCollatorForSeq2Seq,
+    TrainerCallback,
+    TrainerState,
+    TrainerControl,
+    TrainingArguments
 )
 import evaluate
 from src.data.huggingface_dataset import RohingyaHFDataset, setup_logging
+from cloud.upload_to_gcs import upload_directory
+
+class GCSCheckpointCallback(TrainerCallback):
+    """Callback to upload the best model checkpoint to GCS."""
+    
+    def __init__(
+        self,
+        bucket_name: str,
+        project_id: str,
+        location: str = "us-central1"
+    ):
+        self.bucket_name = bucket_name
+        self.project_id = project_id
+        self.location = location
+        self.last_uploaded_checkpoint = None
+
+    def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        """Triggered after every checkpoint save."""
+        if state.best_model_checkpoint and state.best_model_checkpoint != self.last_uploaded_checkpoint:
+            logging.info(f"New best model found at {state.best_model_checkpoint}. Uploading to GCS...")
+            checkpoint_path = Path(state.best_model_checkpoint)
+            upload_directory(
+                bucket_name=self.bucket_name,
+                source_dir=checkpoint_path,
+                destination_prefix=f"best_model",
+                project_id=self.project_id,
+                location=self.location
+            )
+            self.last_uploaded_checkpoint = state.best_model_checkpoint
+
+    def on_train_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        """Triggered at the end of training."""
+        logging.info("Training ended. Final model upload will be handled by the training script.")
+        pass
 
 def compute_metrics(tokenizer):
     """Create a compute_metrics function."""
@@ -48,7 +86,10 @@ def train_model(
     eval_steps: int = 500,
     save_steps: int = 1000,
     max_length: int = 128,
-    model_name: str = "facebook/nllb-200-distilled-600M"
+    model_name: str = "facebook/nllb-200-distilled-600M",
+    gcs_bucket: str = None,
+    gcs_project: str = None,
+    gcs_location: str = "us-central1"
 ):
     """Train the translation model using HuggingFace's Seq2SeqTrainer."""
     logger = setup_logging()
@@ -86,13 +127,16 @@ def train_model(
         warmup_steps=warmup_steps,
         weight_decay=weight_decay,
         logging_steps=logging_steps,
-        evaluation_strategy=evaluation_strategy,
+        eval_strategy=evaluation_strategy,
         eval_steps=eval_steps,
         save_steps=save_steps,
         save_total_limit=2,
         predict_with_generate=True,
         fp16=torch.cuda.is_available(),  # Use mixed precision if GPU available
         report_to=["tensorboard"],  # Log to tensorboard
+        load_best_model_at_end=True if gcs_bucket else False,
+        metric_for_best_model="bleu" if gcs_bucket else None,
+        greater_is_better=True if gcs_bucket else None,
     )
     
     data_collator = DataCollatorForSeq2Seq(
@@ -101,6 +145,15 @@ def train_model(
         padding=True
     )
     
+    callbacks = []
+    if gcs_bucket and gcs_project:
+        logger.info(f"GCS integration enabled. Bucket: {gcs_bucket}")
+        callbacks.append(GCSCheckpointCallback(
+            bucket_name=gcs_bucket,
+            project_id=gcs_project,
+            location=gcs_location
+        ))
+    
     trainer = Seq2SeqTrainer(
         model=model,
         args=training_args,
@@ -108,7 +161,8 @@ def train_model(
         eval_dataset=val_dataset,
         data_collator=data_collator,
         tokenizer=tokenizer,
-        compute_metrics=compute_metrics(tokenizer)
+        compute_metrics=compute_metrics(tokenizer),
+        callbacks=callbacks
     )
     
     # Train the model
@@ -116,9 +170,21 @@ def train_model(
     trainer.train()
     
     # Save the final model
-    logger.info("Saving model...")
-    trainer.save_model(str(output_dir / "final_model"))
-    tokenizer.save_pretrained(str(output_dir / "final_model"))
+    logger.info("Saving final model...")
+    final_model_path = output_dir / "final_model"
+    trainer.save_model(str(final_model_path))
+    tokenizer.save_pretrained(str(final_model_path))
+    
+    # Final upload to GCS if enabled
+    if gcs_bucket and gcs_project:
+        logger.info("Uploading final model to GCS...")
+        upload_directory(
+            bucket_name=gcs_bucket,
+            source_dir=final_model_path,
+            destination_prefix="final_model",
+            project_id=gcs_project,
+            location=gcs_location
+        )
     
     logger.info("Training complete!")
-    return trainer  # Return trainer for further use if needed
+    return trainer
