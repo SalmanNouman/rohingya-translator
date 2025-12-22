@@ -14,7 +14,7 @@ workerPoolSpecs:
         - name: TORCH_CUDA_ARCH_LIST
           value: "7.5"  # T4 architecture
         - name: DATA_DIR
-          value: "/app/data" # Assumes data is mounted or downloaded to here
+          value: "/gcs/rohingya-translator-vertex/data" # Use GCS FUSE mount
         - name: OUTPUT_DIR
           value: "/app/models" # Local output dir before upload
         - name: GCS_BUCKET

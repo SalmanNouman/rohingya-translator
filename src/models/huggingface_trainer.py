@@ -39,7 +39,8 @@ class GCSCheckpointCallback(TrainerCallback):
             upload_directory(
                 bucket_name=self.bucket_name,
                 source_dir=checkpoint_path,
-                destination_prefix=f"best_model",
+
+                destination_prefix="best_model",
                 project_id=self.project_id,
                 location=self.location
             )
