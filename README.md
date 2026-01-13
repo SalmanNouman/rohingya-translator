@@ -43,11 +43,11 @@ pip install -r requirements.txt
 ### 3. Cloud Training (Vertex AI)
 - Build the Docker image:
   ```bash
-  docker build -t gcr.io/airotech-442120/rohingya-translator:v3-t4-opt .
+  docker build -t gcr.io/<YOUR_PROJECT_ID>/rohingya-translator:v3-t4-opt .
   ```
 - Push to Google Container Registry (GCR):
   ```bash
-  docker push gcr.io/airotech-442120/rohingya-translator:v3-t4-opt
+  docker push gcr.io/<YOUR_PROJECT_ID>/rohingya-translator:v3-t4-opt
   ```
 - Submit a job to Vertex AI using the cloud configuration:
   ```bash
